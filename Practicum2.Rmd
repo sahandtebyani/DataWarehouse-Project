@@ -1,0 +1,692 @@
+---
+title: "Practicum2"
+author: "Sahand Tebyani" 
+output: html_notebook
+---
+https://github.com/sahandtebyani
+
+# Part1: 
+In the following image you can see ERD diagram for the relational database:
+```{r, echo=FALSE, out.width="50%", fig.cap="ERD"}
+knitr::include_graphics("C:/Users/sahan/Downloads/Practicum2.png")
+```
+## Creating the DB:
+```{r}
+library(RSQLite)
+
+fpath = "C:/Users/sahan/Downloads/"
+dbfile = "Practicum2DB.db"
+
+dbcon <- dbConnect(RSQLite::SQLite(), paste0(fpath,dbfile))
+```
+
+```{sql connection=dbcon}
+PRAGMA foreign_keys = ON
+```
+```{sql connection=dbcon}
+DROP TABLE IF EXISTS Journal;
+```
+
+```{sql connection=dbcon}
+CREATE TABLE Journal (
+  ISSN INTEGER NOT NULL,
+  journalTitle VARCHAR(32) NOT NULL,
+  PRIMARY KEY (ISSN)
+  );
+```
+
+```{sql connection=dbcon}
+DROP TABLE IF EXISTS JournalIssue;
+```
+
+```{sql connection=dbcon}
+CREATE TABLE JournalIssue (
+  issueId INTEGER NOT NULL,
+  ISSN INTEGER NOT NULL,
+  pubDateYear INTEGER,
+  pubDateMonth VARCHAR(32),
+  pubDateQuarter INTEGER,
+  PRIMARY KEY (issueId)
+  FOREIGN KEY (ISSN) REFERENCES Journal(ISSN) ON DELETE CASCADE
+  );
+```
+
+```{sql connection=dbcon}
+DROP TABLE IF EXISTS Author;
+```
+
+```{sql connection=dbcon}
+CREATE TABLE Author (
+  authorId INTEGER NOT NULL,
+  firstName VARCHAR(32) NOT NULL,
+  lastName VARCHAR(32) NOT NULL,
+  PRIMARY KEY (authorId)
+  );
+```
+
+```{sql connection=dbcon}
+DROP TABLE IF EXISTS History;
+```
+
+```{sql connection=dbcon}
+CREATE TABLE History (
+  historyId INTEGER NOT NULL,
+  historyDate DATE NOT NULL,
+  status VARCHAR(32) NOT NULL,
+  PRIMARY KEY (historyId)
+  );
+```
+
+```{sql connection=dbcon}
+DROP TABLE IF EXISTS Article;
+```
+
+```{sql connection=dbcon}
+CREATE TABLE Article (
+  articleId INTEGER NOT NULL,
+  articleTitle VARCHAR(32) NOT NULL,
+  issueId INTEGER NOT NULL,
+  PRIMARY KEY (articleId),
+  FOREIGN KEY (issueId) REFERENCES JournalIssue(issueId) ON DELETE CASCADE
+  );
+```
+
+```{sql connection=dbcon}
+DROP TABLE IF EXISTS ArticleHistory;
+```
+
+```{sql connection=dbcon}
+CREATE TABLE ArticleHistory (
+  articleId INTEGER NOT NULL,
+  historyId INTEGER NOT NULL,
+  PRIMARY KEY (historyId, articleId),
+  FOREIGN KEY (historyId) REFERENCES History(historyId) ON DELETE CASCADE
+  FOREIGN KEY (articleId) REFERENCES Article(articleId) ON DELETE CASCADE
+  );
+```
+
+```{sql connection=dbcon}
+DROP TABLE IF EXISTS ArticleAuthor;
+```
+
+```{sql connection=dbcon}
+CREATE TABLE ArticleAuthor (
+  authorId INTEGER NOT NULL,
+  articleId INTEGER NOT NULL,
+  PRIMARY KEY (authorId, articleId),
+  FOREIGN KEY (authorId) REFERENCES Author(authorId) ON DELETE CASCADE
+  FOREIGN KEY (articleId) REFERENCES Article(articleId) ON DELETE CASCADE
+  );
+```
+
+## Reading from XML:
+Loading the XML library
+```{r}
+library(XML)
+```
+Reading the pubmed_sample.xml and extract the necessary data using node by node traverse
+```{r}
+path <- "C:/Users/sahan/Downloads/"
+fn <- "pubmed_sample.xml"
+fpn = paste0(path, fn)
+```
+
+```{r}
+# Reading the XML file and parse into DOM
+xmlDOM <- xmlParse(file = fpn)
+
+# get the root node of the DOM tree
+r <- xmlRoot(xmlDOM)
+```
+
+Create a general dataframe (xml.df) to use for creating smaller dataframes:
+```{r}
+numJournals <- xmlSize(r)
+k <- 0
+for (i in 1:numJournals){
+  aJournal <- r[[i]]
+
+  list <- aJournal[[1]][[5]][[6]]
+  if (xmlName(aJournal[[1]][[5]])== "MedlineJournalInfo") {
+    list <- aJournal[[1]][[4]][[6]]
+    if (xmlName(list) == "Abstract") {
+      list <- aJournal[[1]][[4]][[7]]
+    }
+  }
+  if (xmlName(list) == "Abstract") {
+      list <- aJournal[[1]][[5]][[7]]
+  }
+  a <- xmlSize(list)
+  list2 <- aJournal[[2]][[1]]
+  b <- xmlSize(list2)
+  for (j in 1:a) {
+    for (l in 1:b) {
+      k <- k+1
+    }
+    
+  }
+}
+numAuthors <- k
+
+xml.df <- data.frame (ISSN = vector (mode = "character", 
+                                         length = numAuthors),
+                     pubDateYear = vector (mode = "character",
+                                         length = numAuthors),
+                     pubDateMonth = vector (mode = "character",
+                                         length = numAuthors),
+                     journalTitle = vector (mode = "character", 
+                                         length = numAuthors),
+                     articleTitle = vector (mode = "character", 
+                                         length = numAuthors),
+                     historyDate = vector (mode = "character", 
+                                         length = numAuthors),
+                     status = vector (mode = "character", 
+                                         length = numAuthors),
+                     firstName = vector (mode = "character", 
+                                         length = numAuthors),
+                     lastName = vector (mode = "character", 
+                                         length = numAuthors),
+                     stringsAsFactors = F)
+```
+
+load all the neccessary data to the xml.df datframe:
+```{r}
+k <- 0
+for (i in 1:numJournals){
+  aJournal <- r[[i]]
+
+  list <- aJournal[[1]][[5]][[6]]
+  if (xmlName(aJournal[[1]][[5]])== "MedlineJournalInfo") {
+    list <- aJournal[[1]][[4]][[6]]
+    if (xmlName(list) == "Abstract") {
+      list <- aJournal[[1]][[4]][[7]]
+    }
+  }
+  if (xmlName(list) == "Abstract") {
+      list <- aJournal[[1]][[5]][[7]]
+  }
+  a <- xmlSize(list)
+  list2 <- aJournal[[2]][[1]]
+  b <- xmlSize(list2)
+  for (j in 1:a) {
+    firstName <- list[[j]][[2]]
+    lastName <- list[[j]][[1]]
+    for (l in 1:b) {
+      k <- k+1
+      ISSN <- aJournal[[1]][[5]][[1]][[1]]
+      pubDateYear <- aJournal[[1]][[5]][[1]][[2]][[3]][[1]]
+      pubDateMonth <- aJournal[[1]][[5]][[1]][[2]][[3]][[2]]
+      journalTitle <- aJournal[[1]][[5]][[1]][[3]]
+      articleTitle <- aJournal[[1]][[5]][[2]]
+      
+      if (xmlName(aJournal[[1]][[4]]) == "Article")
+      {
+        ISSN <- aJournal[[1]][[4]][[1]][[1]]
+        pubDateYear <- aJournal[[1]][[4]][[1]][[2]][[3]][[1]]
+        pubDateMonth <- aJournal[[1]][[4]][[1]][[2]][[3]][[2]]
+        journalTitle <- aJournal[[1]][[4]][[1]][[3]]
+        articleTitle <- aJournal[[1]][[4]][[2]]
+      }
+      
+      xml.df$ISSN[k] <- xmlValue(ISSN)
+      xml.df$pubDateYear[k] <- xmlValue(pubDateYear)
+      xml.df$pubDateMonth[k] <- xmlValue(pubDateMonth)
+      xml.df$journalTitle[k] <- xmlValue(journalTitle)
+      xml.df$articleTitle[k] <- xmlValue(articleTitle)
+  
+      
+      xml.df$firstName[k] <- xmlValue(firstName)
+      xml.df$lastName[k] <- xmlValue(lastName)
+      
+      historyDate <- aJournal[[2]][[1]][[l]]
+      status <- xmlAttrs(aJournal[[2]][[1]][[l]])
+      xml.df$status[k] <- status
+      xml.df$historyDate[k] <- xmlValue(historyDate) 
+      s <- xmlValue(pubDateYear)
+      l <- nchar(s)
+      if (l > 4) {
+        exy <- substring(s, 0, 4)
+        exm <- substring(s, 6, 8)
+        xml.df$pubDateYear[k] <- exy
+        xml.df$pubDateMonth[k] <- exm
+      }
+    }
+  }
+}
+```
+
+Author data frame:
+```{r}
+library(sqldf)
+options(sqldf.driver = "SQLite")
+Author.df <- sqldf::sqldf("select 1 as authorId, firstName, lastName from 'xml.df'")
+Author.df <- unique(Author.df)
+
+n.author <- nrow(Author.df)
+Author.df[,1] <- seq(1, n.author)
+```
+
+creating data frame for Journal:
+```{r}
+library(sqldf)
+options(sqldf.driver = "SQLite")
+Journal.df <- sqldf::sqldf("select ISSN, journalTitle from 'xml.df'")
+Journal.df <- unique(Journal.df)
+
+```
+
+creating data frame for JournalIssue. I devided the year into four quarters and assigned number 1 to 4 to them. There is also a 0 value for a quarter which means there is no data about the month and quarter, and it represents the whole year.
+```{r}
+library(sqldf)
+options(sqldf.driver = "SQLite")
+JournalIssue.df <- sqldf::sqldf("select 1 as issueId, ISSN, pubDateYear, pubDateMonth, 1 as pubDateQuarter, articleTitle from 'xml.df'")
+
+JournalIssue.df$pubDateQuarter <- replace(JournalIssue.df$pubDateQuarter, JournalIssue.df$pubDateMonth == "Jan" | 
+                                JournalIssue.df$pubDateMonth == "Feb" | JournalIssue.df$pubDateMonth == "Mar",
+                                1)
+JournalIssue.df$pubDateQuarter <- replace(JournalIssue.df$pubDateQuarter, JournalIssue.df$pubDateMonth == "Apr" | 
+                                JournalIssue.df$pubDateMonth == "May" | JournalIssue.df$pubDateMonth == "Jun",
+                                2)
+JournalIssue.df$pubDateQuarter <- replace(JournalIssue.df$pubDateQuarter, JournalIssue.df$pubDateMonth == "Jul" | 
+                                JournalIssue.df$pubDateMonth == "Aug" | JournalIssue.df$pubDateMonth == "Sep",
+                                3)
+JournalIssue.df$pubDateQuarter <- replace(JournalIssue.df$pubDateQuarter, JournalIssue.df$pubDateMonth == "Oct" | 
+                                JournalIssue.df$pubDateMonth == "Nov" | JournalIssue.df$pubDateMonth == "Dec",
+                                4)
+JournalIssue.df$pubDateQuarter <- replace(JournalIssue.df$pubDateQuarter, is.na(JournalIssue.df$pubDateMonth),
+                                0)
+
+JournalIssue.df <- unique(JournalIssue.df)
+n.Issue <- nrow(JournalIssue.df)
+JournalIssue.df[,1] <- 10 + seq(1, n.Issue)
+```
+
+Creating data frame for History:
+```{r}
+library(sqldf)
+library(lubridate)
+options(sqldf.driver = "SQLite")
+History.df <- sqldf::sqldf("select 1 as historyId, historyDate, status from 'xml.df'")
+History.df <- unique(History.df)
+
+# assign an artificial PK
+n.History <- nrow(History.df)
+History.df[,1] <- 100 + seq(1, n.History)
+```
+
+creating data frame for Article:
+```{r}
+library(sqldf)
+options(sqldf.driver = "SQLite")
+Article.df <- sqldf::sqldf("select 1 as articleId, articleTitle, 1 as issueId from 'xml.df'")
+Article.df <- unique(Article.df)
+
+# assign an artificial PK
+n.Article <- nrow(Article.df)
+Article.df[,1] <- 1000 + seq(1, n.Article)
+```
+
+link journalissue and article:
+```{r}
+for (i in 1:n.Article) {
+  for (r in 1:n.Issue){
+    if (Article.df$articleTitle[i] == JournalIssue.df$articleTitle[r]){
+     Article.df$issueId[i] <- JournalIssue.df$issueId[r]
+    }
+  }
+}
+```
+
+ArticleHistory DataFrame:
+```{r}
+library(sqldf)
+options(sqldf.driver = "SQLite")
+ArticleHistory.df <- sqldf::sqldf("select 1 as articleId, 1 as historyId from 'xml.df'")
+```
+
+Link ArticleHistory to Article and History dataframes:
+```{r}
+n.ArticleHistory <- nrow(ArticleHistory.df)
+for (i in 1:n.Article) {
+  for (r in 1:n.ArticleHistory){
+    if (Article.df$articleTitle[i] == xml.df$articleTitle[r]){
+     ArticleHistory.df$articleId[r] <- Article.df$articleId[i]
+    }
+  }
+}
+
+```
+
+```{r}
+for (i in 1:n.History) {
+  for (r in 1:n.ArticleHistory){
+    if (History.df$historyDate[i] == xml.df$historyDate[r] &
+        History.df$status[i] == xml.df$status[r]){
+     ArticleHistory.df$historyId[r] <- History.df$historyId[i]
+    }
+  }
+}
+ArticleHistory.df <- unique(ArticleHistory.df)
+```
+
+creating ArticleAuthor dataframe:
+```{r}
+library(sqldf)
+options(sqldf.driver = "SQLite")
+ArticleAuthor.df <- sqldf::sqldf("select 1 as articleId, 1 as authorId from 'xml.df'")
+
+```
+
+linking author and article to articleauthor:
+```{r}
+n.ArticleAuthor <- nrow(ArticleAuthor.df)
+for (i in 1:n.Article) {
+  for (r in 1:n.ArticleAuthor){
+    if (Article.df$articleTitle[i] == xml.df$articleTitle[r]){
+     ArticleAuthor.df$articleId[r] <- Article.df$articleId[i]
+    }
+  }
+}
+
+```
+
+```{r}
+n.ArticleAuthor <- nrow(ArticleAuthor.df)
+for (i in 1:n.author) {
+  for (r in 1:n.ArticleAuthor){
+    if (Author.df$firstName[i] == xml.df$firstName[r] &&
+        Author.df$lastName[i] == xml.df$lastName[r]){
+     ArticleAuthor.df$authorId[r] <- Author.df$authorId[i]
+    }
+  }
+}
+ArticleAuthor.df <- unique(ArticleAuthor.df)
+```
+
+## Populating the table in the databse:
+
+ArticleAuthor Table:
+```{r}
+dbWriteTable(dbcon, "ArticleAuthor", ArticleAuthor.df, overwrite=TRUE, row.names = FALSE,field.types = c(articleId="INTEGER", authorId="INTEGER"))
+```
+
+```{sql connection=dbcon}
+SELECT * FROM ArticleAuthor
+```
+ArticleHistory Table:
+```{r}
+dbWriteTable(dbcon, "ArticleHistory", ArticleHistory.df, overwrite=TRUE, row.names = FALSE,field.types = c(articleId="INTEGER", historyId="INTEGER"))
+```
+
+```{sql connection=dbcon}
+SELECT * FROM ArticleHistory
+```
+
+Article Table:
+```{r}
+dbWriteTable(dbcon, "Article", Article.df, overwrite=TRUE, row.names = FALSE,field.types = c(articleId="INTEGER", articleTitle="VARCHAR(32)", issueId="INTEGER"))
+```
+
+```{sql connection=dbcon}
+SELECT * FROM Article
+```
+
+History Table:
+```{r}
+dbWriteTable(dbcon, "History", History.df, overwrite=TRUE, row.names = FALSE,field.types = c(historyId="INTEGER", historyDate="DATE", status="VARCHAR(32)"))
+```
+
+```{sql connection=dbcon}
+SELECT * FROM History
+```
+
+JournalIssue Table:
+```{r}
+dbWriteTable(dbcon, "JournalIssue", JournalIssue.df, overwrite=TRUE, row.names = FALSE,field.types = c(issueId="INTEGER" ,ISSN="VARCHAR(32)", pubDateYear="INTEGER", pubDateMonth="VARCHAR(32)", pubDateQuarter="INTEGER"))
+```
+
+```{sql connection=dbcon}
+SELECT * FROM JournalIssue
+```
+
+Journal Table:
+```{r}
+dbWriteTable(dbcon, "Journal", Journal.df, overwrite=TRUE, row.names = FALSE,field.types = c(ISSN="VARCHAR(32)", journalTitle="VARCHAR(32)"))
+```
+
+```{sql connection=dbcon}
+SELECT * FROM Journal
+```
+
+Author Table:
+```{r}
+dbWriteTable(dbcon, "Author", Author.df, overwrite=TRUE, row.names = FALSE,field.types = c(authorId="INTEGER", firstName="VARCHAR(32)", lastName="VARCHAR(32)"))
+```
+
+```{sql connection=dbcon}
+SELECT * FROM Author
+```
+
+# Part2:
+
+## Q1
+### Creating the related dimension tables and a factTable:
+
+To keep track of all articles, author, publication date (year and quarter), and journals, I decided to have four dimensions and a fact table that includes the FK from all four dimension tables that make FK for FactTable. Thus, one can use this table to track the number of articles, authors, and journals quickly with a simple query in the future.
+
+```{r, echo=FALSE, out.width="50%", fig.cap="ERD"}
+knitr::include_graphics("C:/Users/sahan/Downloads/f1.png")
+```
+
+```{sql connection=dbcon}
+DROP TABLE IF EXISTS ArticleDim;
+```
+
+```{sql connection=dbcon}
+CREATE TABLE ArticleDim
+AS SELECT articleId, articleTitle FROM Article;
+```
+
+```{sql connection=dbcon}
+SELECT * From ArticleDim;
+```
+
+
+```{sql connection=dbcon}
+DROP TABLE IF EXISTS AuthorDim;
+```
+
+```{sql connection=dbcon}
+CREATE TABLE AuthorDim
+AS SELECT authorId, firstName, lastName FROM Author;
+```
+
+```{sql connection=dbcon}
+SELECT * From AuthorDim;
+```
+
+```{sql connection=dbcon}
+DROP TABLE IF EXISTS JournalDim;
+```
+
+```{sql connection=dbcon}
+CREATE TABLE JournalDim
+AS SELECT ISSN, journalTitle
+FROM Journal
+```
+
+```{sql connection=dbcon}
+SELECT * From JournalDim;
+```
+
+```{sql connection=dbcon}
+DROP TABLE IF EXISTS DateDim;
+```
+
+```{sql connection=dbcon}
+CREATE TABLE DateDim
+AS SELECT issueId AS dateId, pubDateYear, pubDateQuarter
+FROM JournalIssue
+```
+
+```{sql connection=dbcon}
+SELECT * From DateDim;
+```
+
+```{sql connection=dbcon}
+DROP TABLE IF EXISTS FactTable;
+```
+
+```{sql connection=dbcon}
+CREATE TABLE FactTable(
+articleId INTEGER NOT NULL,
+authorId INTEGER NOT NULL,
+ISSN VARCHAR(32) NOT NULL,
+dateId INTEGER NOT NULL,
+PRIMARY KEY(articleId, authorId, ISSN, dateId));
+```
+
+```{sql connection=dbcon}
+INSERT INTO FactTable
+SELECT a.articleId AS articleId, a.authorId AS authorId , c.ISSN AS ISSN,  c.issueId AS dateId
+      FROM ArticleAuthor a 
+      INNER JOIN Article b ON a.articleId = b.articleId
+      INNER JOIN JournalIssue c ON c.issueId = b.issueId
+      INNER JOIN Journal d ON d.ISSN = c.ISSN
+```
+
+```{sql connection=dbcon}
+SELECT * FROM FactTable
+```
+
+### Q2:
+As per discussed in the last class. Summary table is a very large table containing all the necessary data to prevent any joins and make queries faster. My summary table has the number of articles as the fact and it includes this fact by author and by journal. It means if we want the number of articles in a particular year and quarter by a journal or an author we can have it using a single SELECT query.
+
+```{r, echo=FALSE, out.width="50%", fig.cap="ERD"}
+knitr::include_graphics("C/Users/sahan/Downloads/f2.png")
+```
+
+### summary fact table for number of articles per time period by Author:
+
+```{sql connection=dbcon}
+DROP TABLE IF EXISTS ArticleFact;
+```
+
+```{sql connection=dbcon}
+CREATE TABLE ArticleFact(
+numberOFArticles INTEGER,
+year INTEGER,
+quarter INTEGER,
+authorFirstName VARCHAR(32),
+authorLastName VARCHAR(32),
+journal VARCHAR(32)
+);
+```
+
+```{sql connection=dbcon}
+INSERT INTO ArticleFact
+SELECT COUNT(DISTINCT a.articleId) AS numberOfArticles, c.pubDateYear AS year, c.pubDateQuarter AS quarter, au.firstName AS authorFirstName, au.lastName AS authorLastName, "N/A" AS journal 
+FROM ArticleAuthor a 
+INNER JOIN Article b ON a.articleId = b.articleId
+INNER JOIN JournalIssue c ON c.issueId = b.issueId
+INNER JOIN Journal d ON d.ISSN = c.ISSN
+INNER JOIN Author au ON au.authorId = a.authorId
+GROUP BY c.pubDateYear, c.pubDateQuarter, au.authorId
+```
+
+```{sql connection=dbcon}
+INSERT INTO ArticleFact
+SELECT COUNT(DISTINCT a.articleId) AS numberOfArticles, c.pubDateYear AS year, c.pubDateQuarter AS quarter, "N/A" AS authorFirstName, "N/A" AS authorLastName, d.journalTitle AS journal 
+FROM ArticleAuthor a 
+INNER JOIN Article b ON a.articleId = b.articleId
+INNER JOIN JournalIssue c ON c.issueId = b.issueId
+INNER JOIN Journal d ON d.ISSN = c.ISSN
+INNER JOIN Author au ON au.authorId = a.authorId
+GROUP BY d.journalTitle, c.pubDateQuarter, c.pubDateYear
+```
+
+```{sql connection=dbcon}
+INSERT INTO ArticleFact
+SELECT COUNT(DISTINCT a.articleId) AS numberOfArticles, 0 AS year, c.pubDateQuarter AS quarter, "N/A" AS authorFirstName, "N/A" AS authorLastName, "N/A" AS journal 
+FROM ArticleAuthor a 
+INNER JOIN Article b ON a.articleId = b.articleId
+INNER JOIN JournalIssue c ON c.issueId = b.issueId
+INNER JOIN Journal d ON d.ISSN = c.ISSN
+INNER JOIN Author au ON au.authorId = a.authorId
+GROUP BY c.pubDateQuarter
+```
+
+```{sql connection=dbcon}
+SELECT * FROM ArticleFact
+```
+
+
+# Part3:
+
+In this part, I tried to inspect the warehouse to find some patterns in the tables and between columns. Since I have one fact table and another summary fact table (ArticleFact), I did two separate analyses on each of these tables.
+
+### ArticleFact:
+The following query shows us the number of articles per year quarter. As you can see, there is an article that its quarter is unknown and the second quarter seems to have more articles published comparing to others. On the other hand, the fourth quarter has the lowest number of publications among quarters.
+
+```{r}
+sqlCmd = "SELECT * FROM ArticleFact WHERE (year = 0)"
+rs1 = dbGetQuery(dbcon, sqlCmd)
+rs1
+```
+
+```{r}
+plot(rs1$quarter, rs1$numberOFArticles, type = "o", col = "red", ylab = "Total Number of Articles", xlab = "Quarters of The Year")
+```
+
+The following query gives us the numberOFArticles for each quarter by the journal. As you can see, each of the journals has only one publication per each of 4 quarters of 2012, and the data only includes the first quarter of 2013, which is 1 also. In the following, you can see the graph associated with the data frame resulted from this query. 
+```{r}
+sqlCmd = "SELECT * FROM ArticleFact WHERE (journal != 'N/A') ORDER BY quarter"
+rs2 = dbGetQuery(dbcon, sqlCmd)
+rs2
+```
+
+```{r}
+plot(rs2$numberOFArticles, type = "o", ylim= c(1,5), xaxt="n", xlab = "", ylab = "Number of articles")
+axis(1, at=1:19, labels=c(rs2$quarter), xaxp = c(1,19,3))
+axis(1, at=1:19, labels=c(rs2$year), tick = FALSE, line = 1, las=3)
+title(xlab="year and quarter", line=4, cex.lab=1)
+```
+### FactTable
+Also we can analyze the FactTable beside the ArticleFact (summary fact table) to recognize some other paterns. Following query results in the journals with their ISSNs that published more than one articles. 
+
+```{sql connection=dbcon}
+SELECT f.ISSN, j.journalTitle, f.countArticle FROM
+    (SELECT ISSN, COUNT(DISTINCT articleId) AS countArticle, pubDateQuarter FROM FactTable a
+    INNER JOIN DateDim d ON d.dateId = a.dateId
+    GROUP BY ISSN
+    HAVING countArticle > 1) f
+INNER JOIN JournalDim j ON j.ISSN = f.ISSN
+```
+Following query can complete the above which shows the same journals with the articles names separated by the quarter. Each of these journals have 2 articles published in different year quarters which are quarters 1, 2, 4.
+```{sql connection=dbcon}
+SELECT DISTINCT a.articleId, a.ISSN, j.journalTitle, d.pubDateQuarter FROM FactTable a
+INNER JOIN DateDim d ON d.dateId = a.dateId
+INNER JOIN JournalDim j ON j.ISSN = a.ISSN
+WHERE a.ISSN IN
+(SELECT ISSN FROM 
+                (SELECT f.ISSN, j.journalTitle, f.countArticle FROM
+                      (SELECT ISSN, COUNT(DISTINCT articleId) AS countArticle, pubDateQuarter FROM FactTable
+                      INNER JOIN DateDim d ON d.dateId = a.dateId
+                      GROUP BY ISSN
+                      HAVING countArticle > 1) f
+                INNER JOIN JournalDim j ON j.ISSN = f.ISSN))
+
+    
+```
+Also, the following query result will give us the name of the articles that their journal is related to a specific field of study that has the suffix "ology" in their journal names and their quarters. We can see that both of them are published in the third quarter.
+```{sql connection=dbcon}
+SELECT DISTINCT articleTitle, pubDateQuarter FROM FactTable a
+INNER JOIN JournalDim j ON j.ISSN = a.ISSN
+INNER JOIN ArticleDim ad ON ad.articleId = a.articleId
+INNER JOIN DateDim d ON d.dateId = a.dateId
+WHERE j.journalTitle LIKE "%ology%"
+```
+
+```{r}
+dbDisconnect(dbcon)
+```
